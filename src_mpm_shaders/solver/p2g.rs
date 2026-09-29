@@ -188,9 +188,16 @@ pub fn gpu_p2g_generic<const USE_CPIC: bool>(
                     // impulse computation needs it) or the precomputed momentum
                     // (velocity * mass) otherwise, so the inner loop never recomputes it.
                     let vel_or_momentum = if USE_CPIC {
-                        pkin.velocity
+                        // CPIC carries velocity until the compatibility test,
+                        // so convert the authored impulse back by mass here.
+                        // Zero-mass entries cannot receive a finite impulse.
+                        if pkin.mass > 0.0 {
+                            pkin.velocity + pkin.force_dt / pkin.mass
+                        } else {
+                            pkin.velocity
+                        }
                     } else {
-                        pkin.velocity * pkin.mass
+                        pkin.velocity * pkin.mass + pkin.force_dt
                     };
                     shared_pos.write(slot, pos);
                     shared_vel_mass.write(slot, (vel_or_momentum, pkin.mass));

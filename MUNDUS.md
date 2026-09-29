@@ -48,3 +48,15 @@ Known qualification gaps include startup latency outliers, live empty/nonempty
 transitions, resource overflow, long-running coupled worlds, NVIDIA hardware,
 native host integration and surfaced ferrofluid/reference fidelity. A passing
 empty-world test does not qualify those capabilities.
+
+The force-input follow-up fixes a separate defect: `Kinematics::force_dt` was
+stored and reset but never consumed by P2G. Plain MPM now adds that impulse to
+momentum; CPIC converts it to velocity by particle mass before its compatibility
+handling. Particle update clears it as before. Hosts must republish a sustained
+force each substep; one impulse must not be repeated automatically. Zero-force
+worlds retain their existing path. The opt-in regression checks positive, zero
+and negative impulses with non-unit mass in both actual boundary modes, after
+one frame and one second, including cleared input and preserved particle mass.
+It passed on Apple M2 Max/Metal. This qualifies an input, not a built-in magnetic
+or surface-tension model. The free-fall checks also reject disabled particles
+and lost mass instead of accepting finite but frozen positions.
