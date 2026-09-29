@@ -1,7 +1,7 @@
 # Mundus GPU integration branch
 
 This company fork tracks upstream Nexus. `main` retains upstream history;
-`codex/MDUS-333-gpu-stability` starts at release 0.5.0 (`5b05f4a`) and carries
+`gpu-stability` starts at release 0.5.0 (`5b05f4a`) and carries
 the empty-collider fix. Keep downstream engine changes small and preserve
 upstream license and attribution notices. Mundus-specific nodes, registry
 descriptors, rendering and preparation scheduling belong in Mundus.
