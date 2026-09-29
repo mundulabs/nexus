@@ -40,8 +40,11 @@ impl NexusPipeline {
     /// compilation) than the subsequent ones.
     ///
     /// In addition, resources are loaded lazily on the GPU, so the first step
-    /// after inserting/removing entities can be slower too. Call `Self::finalize`
-    /// to pay that cost upfront.
+    /// after inserting/removing entities can be slower too. Finalizing state
+    /// and preloading pipelines does not guarantee that the first submitted
+    /// GPU work has completed. Hosts with a presentation deadline should
+    /// prepare off their UI thread and wait for GPU completion before
+    /// activating the prepared frame, retaining its actual simulation time.
     pub async fn simulate(
         &mut self,
         backend: &GpuBackend,
@@ -80,9 +83,9 @@ impl NexusPipeline {
             // MPM needs many small substeps per visible frame for stability.
             // Upload the per-substep dt once, then run the substep loop.
             let substeps = state.mpm_substeps.max(1);
-            let _ = mpm.write_substep_params(backend, substeps);
+            mpm.write_substep_params(backend, substeps)?;
             for _ in 0..substeps {
-                let _ = pipeline.step(backend, mpm, timestamps.as_deref_mut());
+                pipeline.step(backend, mpm, timestamps.as_deref_mut())?;
             }
         }
 

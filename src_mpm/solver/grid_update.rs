@@ -42,7 +42,7 @@ impl WgGridUpdate {
             &mut grid.nodes,
         )?;
 
-        if !use_cpic {
+        if !use_cpic && !bodies.is_empty() {
             self.grid_update_collide.call(
                 pass,
                 indirect_dispatch_tensor(&grid.indirect_n_g2p_p2g_groups),

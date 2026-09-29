@@ -61,9 +61,6 @@ impl WgG2P {
                 &particles.sorted_ids,
                 &particles.positions,
                 &mut particles.kinematics,
-                &bodies.vels,
-                &bodies.mprops,
-                &body_materials.materials,
             )
         }
     }

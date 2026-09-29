@@ -11,7 +11,7 @@ use crate::solver::{
     WgGridUpdate, WgGridUpdateCdf, WgIntegrateBodies, WgP2G, WgP2GCdf, WgParticleUpdate,
     WgRigidParticleUpdate, WgTimestepBounds,
 };
-use khal::backend::{Backend, Encoder, GpuBackend, GpuBackendError, GpuTimestamps};
+use khal::backend::{Backend, Encoder, GpuBackend, GpuBackendError, GpuEncoder, GpuTimestamps};
 use khal::{BufferUsages, Shader};
 use nexus_rbd::dynamics::GpuBodySet;
 use nexus_rbd::math::{Pose, Vector};
@@ -386,9 +386,29 @@ impl MpmPipeline {
         &self,
         backend: &GpuBackend,
         data: &mut MpmState,
-        mut timestamps: Option<&mut GpuTimestamps>,
+        timestamps: Option<&mut GpuTimestamps>,
     ) -> Result<(), GpuBackendError> {
         let mut encoder = backend.begin_encoding();
+        self.encode_step(backend, &mut encoder, data, timestamps)?;
+        backend.submit(encoder)
+    }
+
+    /// Records one MPM substep without submitting it to the GPU queue.
+    ///
+    /// Hosts may encode several fixed substeps and submit once per frame.
+    /// Upload parameters before encoding. CPU-side grid swaps happen while
+    /// recording, so discard the candidate state if encoding fails; this is
+    /// not a transaction or an allocation-free command cache.
+    pub fn encode_step(
+        &self,
+        backend: &GpuBackend,
+        encoder: &mut GpuEncoder,
+        data: &mut MpmState,
+        mut timestamps: Option<&mut GpuTimestamps>,
+    ) -> Result<(), GpuBackendError> {
+        // A requested CPIC mode needs actual coupled bodies. Empty worlds
+        // must use kernels that do not bind zero-length body arrays.
+        let use_cpic = data.use_cpic && !data.bodies.is_empty();
 
         {
             let mut pass = encoder.begin_pass("[MPM] Rigid update", timestamps.as_deref_mut());
@@ -411,14 +431,14 @@ impl MpmPipeline {
                 backend,
                 &mut pass,
                 &mut data.particles,
-                data.use_cpic.then_some(&mut data.rigid_particles),
+                use_cpic.then_some(&mut data.rigid_particles),
                 &mut data.grid,
                 &mut data.prefix_sum,
                 &self.sort,
                 &self.prefix_sum,
             )?;
 
-            if data.use_cpic {
+            if use_cpic {
                 self.sort.launch_sort_rigid_particles(
                     backend,
                     &mut pass,
@@ -430,7 +450,7 @@ impl MpmPipeline {
             }
         }
 
-        if data.use_cpic {
+        if use_cpic {
             {
                 let mut pass =
                     encoder.begin_pass("[MPM] CDF grid update", timestamps.as_deref_mut());
@@ -463,7 +483,7 @@ impl MpmPipeline {
             let mut pass = encoder.begin_pass("[MPM] P2G", timestamps.as_deref_mut());
             self.p2g.launch(
                 &mut pass,
-                data.use_cpic,
+                use_cpic,
                 &mut data.grid,
                 &data.particles,
                 &mut data.impulses,
@@ -476,7 +496,7 @@ impl MpmPipeline {
             let mut pass = encoder.begin_pass("[MPM] Grid update", timestamps.as_deref_mut());
             self.grid_update.launch(
                 &mut pass,
-                data.use_cpic,
+                use_cpic,
                 &data.sim_params,
                 &mut data.grid,
                 &data.bodies,
@@ -488,7 +508,7 @@ impl MpmPipeline {
             let mut pass = encoder.begin_pass("[MPM] G2P", timestamps.as_deref_mut());
             self.g2p.launch(
                 &mut pass,
-                data.use_cpic,
+                use_cpic,
                 &data.sim_params,
                 &data.grid,
                 &mut data.particles,
@@ -519,10 +539,10 @@ impl MpmPipeline {
         }
 
         if let Some(timestamps) = timestamps {
-            timestamps.resolve(&mut encoder);
+            timestamps.resolve(encoder);
         }
 
-        backend.submit(encoder)
+        Ok(())
     }
 
     /// Pushes the coupled bodies' MPM-integrated poses into `rbd_poses`, the

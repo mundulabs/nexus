@@ -39,3 +39,6 @@ khal = { workspace = true }
 nexus_rbd3d = { workspace = true, optional = true, features = ["default"] }
 nexus_mpm3d = { workspace = true, optional = true }
 
+[dev-dependencies]
+pollster = { workspace = true }
+wgpu = "=30.0.1"
